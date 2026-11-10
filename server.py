@@ -319,10 +319,17 @@ def resolve_audio(video_id):
         "noplaylist": True,
         "cachedir": False,
         "socket_timeout": 15,
+        # Datacenter IPs get PO-token enforcement on the default clients;
+        # the embedded/TV players do not require it.
+        "extractor_args": {"youtube": {"player_client": ["web_embedded", "tv", "visionos"]}},
     }
     with yt_dlp.YoutubeDL(options) as ydl:
         info = ydl.extract_info("https://www.youtube.com/watch?v=" + video_id, download=False)
-    formats = [f for f in info.get("formats") or [] if f.get("vcodec") == "none" and f.get("acodec") not in (None, "none") and f.get("url")]
+    formats = [
+        f for f in info.get("formats") or []
+        if f.get("vcodec") == "none" and f.get("acodec") not in (None, "none") and f.get("url")
+        and f.get("protocol") in ("https", "http")
+    ]
     if not formats:
         raise ValueError("No audio-only stream for this video")
     m4a = [f for f in formats if f.get("ext") == "m4a"]
@@ -430,7 +437,7 @@ class Handler(BaseHTTPRequestHandler):
             info = cached(("stream", video_id), lambda: resolve_audio(video_id), 600)
         except Exception as error:
             self.log_error("Stream resolve error: %s", error)
-            self.send({"error": "This song can't be streamed right now. Try another song."}, 502, head=head)
+            self.send({"error": "This song can't be streamed right now. Try another song.", "detail": str(error)[:300]}, 502, head=head)
             return
         if head:
             self.send_response(200)
@@ -463,7 +470,7 @@ class Handler(BaseHTTPRequestHandler):
                     info = cached(("stream", video_id), lambda: resolve_audio(video_id), 600)
                 except Exception as error:
                     self.log_error("Stream resolve error: %s", error)
-                    self.send({"error": "This song can't be streamed right now. Try another song."}, 502)
+                    self.send({"error": "This song can't be streamed right now. Try another song.", "detail": str(error)[:300]}, 502)
                     return
                 continue
             break
