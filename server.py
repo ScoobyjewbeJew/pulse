@@ -49,6 +49,7 @@ if _cookies.strip():
     COOKIE_FILE.write_text(_cookies, encoding="utf-8")
     os.chmod(COOKIE_FILE, 0o600)
 POT_URL = os.environ.get("PULSE_POT_URL", "").strip()
+BUILD = "cookies-writable-copy"
 CLIENTS = threading.local()
 CACHE = {}
 CACHE_LOCK = threading.Lock()
@@ -552,7 +553,16 @@ class Handler(BaseHTTPRequestHandler):
 
         try:
             if path == "/api/health":
-                self.send({"ok": True, "service": "pulse-ytmusicapi", "python": sys.version.split()[0]})
+                # build proves which commit is actually serving traffic; the two
+                # booleans show whether auth and the token provider loaded.
+                self.send({
+                    "ok": True,
+                    "service": "pulse-ytmusicapi",
+                    "python": sys.version.split()[0],
+                    "build": BUILD,
+                    "cookies": bool(COOKIE_FILE),
+                    "token_provider": bool(POT_URL),
+                })
                 return
             if path == "/api/home":
                 self.send(cached("home", get_home, 600))
