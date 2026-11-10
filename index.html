@@ -2219,11 +2219,10 @@ body.now-open .now-panel, body.queue-open .queue-panel { transform: none; }
 (() => {
   "use strict";
 
-  // Hosting config: when this file is hosted separately from server.py
-  // (e.g. Neocities embedded in Google Sites), paste the backend's public
-  // URL between the quotes, like "https://your-app.onrender.com".
-  // Leave empty when the Python server serves this file itself.
-  window.PULSE_API_BASE = "";
+  // Hosting config: the public URL of server.py (Render). Automatically
+  // ignored when you open Pulse from your local server, so this one file
+  // works both at home and hosted on Neocities / Google Sites.
+  window.PULSE_API_BASE = ["localhost", "127.0.0.1"].includes(window.location.hostname) ? "" : "https://pulse-e2gi.onrender.com";
 
   window.createPulseAudio = () => {
     const el = new Audio();

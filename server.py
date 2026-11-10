@@ -26,6 +26,13 @@ ROOT = Path(__file__).resolve().parent
 # index.html (comma-separated). Empty = local-only mode, unchanged behavior.
 ALLOWED_ORIGINS = {value.strip().rstrip("/") for value in os.environ.get("PULSE_ALLOWED_ORIGINS", "").split(",") if value.strip()}
 DEPLOYED = bool(ALLOWED_ORIGINS)
+# Optional signed-in YouTube session for hosts whose IPs YouTube bot-checks.
+# Holds the contents of a burner account's cookies.txt as a secret env var;
+# the file itself is never committed or served.
+COOKIE_FILE = None
+if os.environ.get("PULSE_YT_COOKIES", "").strip():
+    COOKIE_FILE = ROOT / ".pulse-yt-cookies.txt"
+    COOKIE_FILE.write_text(os.environ["PULSE_YT_COOKIES"], encoding="utf-8")
 CLIENTS = threading.local()
 CACHE = {}
 CACHE_LOCK = threading.Lock()
@@ -319,10 +326,16 @@ def resolve_audio(video_id):
         "noplaylist": True,
         "cachedir": False,
         "socket_timeout": 15,
-        # Datacenter IPs get PO-token enforcement on the default clients;
-        # the embedded/TV players do not require it.
         "extractor_args": {"youtube": {"player_client": ["web_embedded", "tv", "visionos"]}},
     }
+    if os.environ.get("PULSE_POT_URL"):
+        options["js_runtimes"] = {"node": {}}
+        options["extractor_args"] = {
+            "youtube": {"player_client": ["mweb", "tv"], "fetch_pot": ["always"]},
+            "youtubepot-bgutilhttp": {"base_url": [os.environ["PULSE_POT_URL"]]},
+        }
+    if COOKIE_FILE:
+        options["cookiefile"] = str(COOKIE_FILE)
     with yt_dlp.YoutubeDL(options) as ydl:
         info = ydl.extract_info("https://www.youtube.com/watch?v=" + video_id, download=False)
     formats = [
