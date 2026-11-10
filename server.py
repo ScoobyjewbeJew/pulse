@@ -27,12 +27,17 @@ ROOT = Path(__file__).resolve().parent
 ALLOWED_ORIGINS = {value.strip().rstrip("/") for value in os.environ.get("PULSE_ALLOWED_ORIGINS", "").split(",") if value.strip()}
 DEPLOYED = bool(ALLOWED_ORIGINS)
 # Optional signed-in YouTube session for hosts whose IPs YouTube bot-checks.
-# Holds the contents of a burner account's cookies.txt as a secret env var;
-# the file itself is never committed or served.
+# Render exposes Secret Files at /etc/secrets/<name>, so paste a burner account's
+# cookies.txt there as "pulse-yt-cookies.txt". The env var is the fallback for
+# other hosts. Neither form is ever committed or served.
 COOKIE_FILE = None
-if os.environ.get("PULSE_YT_COOKIES", "").strip():
+SECRET_COOKIES = Path("/etc/secrets/pulse-yt-cookies.txt")
+if SECRET_COOKIES.is_file():
+    COOKIE_FILE = SECRET_COOKIES
+elif os.environ.get("PULSE_YT_COOKIES", "").strip():
     COOKIE_FILE = ROOT / ".pulse-yt-cookies.txt"
     COOKIE_FILE.write_text(os.environ["PULSE_YT_COOKIES"], encoding="utf-8")
+POT_URL = os.environ.get("PULSE_POT_URL", "").strip()
 CLIENTS = threading.local()
 CACHE = {}
 CACHE_LOCK = threading.Lock()
@@ -328,11 +333,14 @@ def resolve_audio(video_id):
         "socket_timeout": 15,
         "extractor_args": {"youtube": {"player_client": ["web_embedded", "tv", "visionos"]}},
     }
-    if os.environ.get("PULSE_POT_URL"):
+    if POT_URL:
         options["js_runtimes"] = {"node": {}}
+        # A PO token alone does not clear an IP-wide bot check; the signed-in web
+        # client is what carries the session, so it joins the list once cookies exist.
+        clients = ["web", "mweb", "tv"] if COOKIE_FILE else ["mweb", "tv"]
         options["extractor_args"] = {
-            "youtube": {"player_client": ["mweb", "tv"], "fetch_pot": ["always"]},
-            "youtubepot-bgutilhttp": {"base_url": [os.environ["PULSE_POT_URL"]]},
+            "youtube": {"player_client": clients, "fetch_pot": ["always"]},
+            "youtubepot-bgutilhttp": {"base_url": [POT_URL]},
         }
     if COOKIE_FILE:
         options["cookiefile"] = str(COOKIE_FILE)
