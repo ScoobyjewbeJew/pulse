@@ -5,6 +5,7 @@ import json
 import os
 import re
 import sys
+import tempfile
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -27,16 +28,26 @@ ROOT = Path(__file__).resolve().parent
 ALLOWED_ORIGINS = {value.strip().rstrip("/") for value in os.environ.get("PULSE_ALLOWED_ORIGINS", "").split(",") if value.strip()}
 DEPLOYED = bool(ALLOWED_ORIGINS)
 # Optional signed-in YouTube session for hosts whose IPs YouTube bot-checks.
-# Render exposes Secret Files at /etc/secrets/<name>, so paste a burner account's
-# cookies.txt there as "pulse-yt-cookies.txt". The env var is the fallback for
-# other hosts. Neither form is ever committed or served.
-COOKIE_FILE = None
+# Render exposes Secret Files read-only at /etc/secrets/<name>, so paste a burner
+# account's cookies.txt there as "pulse-yt-cookies.txt". The env var is the
+# fallback for other hosts. Neither form is ever committed or served.
 SECRET_COOKIES = Path("/etc/secrets/pulse-yt-cookies.txt")
-if SECRET_COOKIES.is_file():
-    COOKIE_FILE = SECRET_COOKIES
-elif os.environ.get("PULSE_YT_COOKIES", "").strip():
-    COOKIE_FILE = ROOT / ".pulse-yt-cookies.txt"
-    COOKIE_FILE.write_text(os.environ["PULSE_YT_COOKIES"], encoding="utf-8")
+
+
+def cookie_blob():
+    if SECRET_COOKIES.is_file():
+        return SECRET_COOKIES.read_text(encoding="utf-8", errors="replace")
+    return os.environ.get("PULSE_YT_COOKIES", "")
+
+
+# yt-dlp dumps refreshed cookies back to the file it was given, which a read-only
+# secret mount cannot survive, so it always gets a private writable copy.
+COOKIE_FILE = None
+_cookies = cookie_blob()
+if _cookies.strip():
+    COOKIE_FILE = Path(tempfile.gettempdir()) / "pulse-yt-cookies.txt"
+    COOKIE_FILE.write_text(_cookies, encoding="utf-8")
+    os.chmod(COOKIE_FILE, 0o600)
 POT_URL = os.environ.get("PULSE_POT_URL", "").strip()
 CLIENTS = threading.local()
 CACHE = {}
